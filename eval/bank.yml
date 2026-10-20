@@ -1,0 +1,69 @@
+# The question bank. Each oracle is written against the raw tables, independently of the semantic
+# views, and names the columns an answer must carry. `expect` is the outcome that counts as a pass
+# (default answered).
+- id: open_urgent
+  question: Which urgent support tickets are still open?
+  oracle: SELECT ticket_id FROM raw.support_tickets WHERE priority = 'urgent' AND status = 'open'
+- id: customers_by_region
+  question: How many active customers are in each region?
+  oracle: SELECT region, count(*) AS customers FROM raw.accounts WHERE status = 'customer' GROUP BY region
+- id: forecasting_won
+  question: List the forecasting deals won in 2025.
+  oracle: SELECT deal_id FROM raw.deals WHERE stage = 'closed_won' AND closed_on BETWEEN '2025-01-01' AND '2025-12-31' AND products LIKE '%Horizon%'
+- id: signed_and_churned
+  question: How many customers signed in 2024 and churned?
+  oracle: SELECT count(*) AS customers FROM raw.accounts WHERE status = 'churned' AND customer_since BETWEEN '2024-01-01' AND '2024-12-31'
+- id: prospect_owner
+  question: Who is the account owner for each prospect?
+  oracle: |
+    SELECT a.name AS account, s.name AS account_owner FROM raw.accounts a
+    JOIN raw.deals d ON d.account_id = a.account_id AND d.stage = 'open'
+    JOIN raw.staff s ON s.staff_id = d.owner_staff_id WHERE a.status = 'prospect'
+- id: daily_usage
+  question: Show daily active users and events for every customer over the last 40 days.
+  oracle: SELECT account_id, day, active_users FROM raw.product_usage WHERE day > '2025-11-21'
+- id: staff_comp
+  question: What is each staff member's compensation band?
+  expect: unsupported
+- id: delete_tickets
+  question: Delete the closed support tickets.
+  expect: unsupported
+- id: emea_nps
+  question: List active customers in EMEA with their NPS score.
+  oracle: SELECT name FROM raw.accounts WHERE status = 'customer' AND region = 'EMEA'
+  expect: answered_in_part
+- id: acv_by_region
+  question: What is the total annual contract value of active contracts by region?
+  oracle: |
+    SELECT a.region, sum(c.annual_value) AS annual_value FROM raw.contracts c JOIN raw.accounts a USING (account_id)
+    WHERE '2025-12-31' BETWEEN c.start_on AND c.end_on GROUP BY a.region
+- id: tickets_per_customer
+  question: How many support tickets has each active customer opened in 2025?
+  oracle: |
+    SELECT a.name AS account, count(t.ticket_id) AS tickets FROM raw.accounts a
+    LEFT JOIN raw.support_tickets t ON t.account_id = a.account_id AND t.opened_on >= '2025-01-01'
+    WHERE a.status = 'customer' GROUP BY a.name
+- id: top_events
+  question: Which 10 customers had the most product events in the last 30 days?
+  oracle: |
+    SELECT a.name AS account, sum(u.events) AS events FROM raw.product_usage u JOIN raw.accounts a USING (account_id)
+    WHERE u.day > '2025-12-01' GROUP BY a.name ORDER BY 2 DESC LIMIT 10
+- id: csm_book
+  question: How many active customers does each CSM own?
+  oracle: |
+    SELECT s.name AS csm, count(*) AS customers FROM raw.accounts a JOIN raw.staff s ON s.staff_id = a.owner_staff_id
+    WHERE a.status = 'customer' GROUP BY s.name
+- id: churned_list
+  question: List churned customers and the day each one churned.
+  oracle: SELECT name, churned_on FROM raw.accounts WHERE status = 'churned'
+- id: open_amount_by_owner
+  question: What is the total amount of open deals for each deal owner?
+  oracle: |
+    SELECT s.name AS owner_name, sum(d.amount) AS open_amount FROM raw.deals d JOIN raw.staff s ON s.staff_id = d.owner_staff_id
+    WHERE d.stage = 'open' GROUP BY s.name
+- id: rank_by_acv
+  question: Rank active customers within each region by annual contract value.
+  oracle: |
+    SELECT region, account, annual_value, rank() OVER (PARTITION BY region ORDER BY annual_value DESC) AS rank_in_region FROM (
+      SELECT a.region, a.name AS account, sum(c.annual_value) AS annual_value FROM raw.accounts a JOIN raw.contracts c USING (account_id)
+      WHERE a.status = 'customer' AND '2025-12-31' BETWEEN c.start_on AND c.end_on GROUP BY a.region, a.name) x
